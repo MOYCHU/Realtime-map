@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Melbourne Parking Map - Focus on Melbourne Central</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 600px;
+            width: 100%;
+            margin: auto;
+            border: 1px solid #ccc;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Melbourne Parking Map - Focus on Melbourne Central</h2>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script>
+        // 用户中心点坐标（Melbourne Central）
+        const userLatLng = [-37.8105, 144.9624];
+
+        // 初始化地图，中心点
+        const map = L.map('map').setView(userLatLng, 18);
+
+        // 简约风格底图
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            maxZoom: 19
+        }).addTo(map);
+
+        // 添加用户位置标记：蓝色圆点
+        const userMarker = L.circleMarker(userLatLng, {
+            radius: 10,
+            color: '#007bff',
+            weight: 3,
+            fillColor: '#3399ff',
+            fillOpacity: 0.8
+        }).addTo(map).bindPopup('Your Location: Melbourne Central').openPopup();
+
+        const markerGroup = L.layerGroup().addTo(map);
+
+        const statusColor = {
+            "Unoccupied": "green",
+            "Present": "red"
+        };
+
+        async function loadParkingData() {
+            try {
+                const limit = 100;
+                let offset = 0;
+                let total = null;
+                let allRecords = [];
+
+                while (true) {
+                    const url = `https://discover.data.vic.gov.au/api/3/action/datastore_search?resource_id=eb40ac75-8976-5bdc-bbe8-434fa3a0b0ae&limit=${limit}&offset=${offset}`;
+                    const response = await fetch(url, {
+                        headers: { 'User-Agent': 'Mozilla/5.0' }
+                    });
+                    const data = await response.json();
+
+                    if (!data.success) {
+                        console.error("API error:", data);
+                        break;
+                    }
+
+                    if (total === null) total = data.result.total;
+
+                    allRecords = allRecords.concat(data.result.records);
+
+                    offset += limit;
+                    if (offset >= total) break;
+                }
+
+                renderMarkers(allRecords);
+            } catch (err) {
+                console.error("Failed to load parking data:", err);
+            }
+        }
+
+        function renderMarkers(records) {
+            markerGroup.clearLayers();
+            records.forEach(r => {
+                if (!r.location) return;
+                const coords = r.location.split(',');
+                if (coords.length === 2) {
+                    const lat = parseFloat(coords[0].trim());
+                    const lng = parseFloat(coords[1].trim());
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        const color = statusColor[r.status_description] || "blue";
+                        const marker = L.circleMarker([lat, lng], {
+                            radius: 8,
+                            color: "white",
+                            weight: 1,
+                            fillColor: color,
+                            fillOpacity: 0.9
+                        }).bindPopup(`<b>Status:</b> ${r.status_description || 'N/A'}`);
+                        marker.addTo(markerGroup);
+                    }
+                }
+            });
+        }
+
+        loadParkingData();
+        setInterval(loadParkingData, 300000);
+    </script>
+</body>
+</html>
